@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multilingual Voice Controlled System</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">AI-Powered Assistant</p>
+          <h1>Multilingual Voice Controlled System for Major Nigerian Languages</h1>
+          <p class="subtitle">
+            Speak naturally in Igbo, Yoruba, or Hausa and let the system understand, respond, and open the requested application or website.
+          </p>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="panel controls-panel">
+          <div class="control-row">
+            <label for="languageSelect">Preferred Language</label>
+            <select id="languageSelect">
+              <option value="auto">Auto Detect</option>
+              <option value="ig">Igbo</option>
+              <option value="yo">Yoruba</option>
+              <option value="ha">Hausa</option>
+            </select>
+          </div>
+
+          <div class="control-row button-row">
+            <button id="micButton" class="primary-btn">Wake Word</button>
+            <button id="readyButton" class="primary-btn accent-alt">Ready to Listen</button>
+            <button id="stopButton" class="secondary-btn">Stop</button>
+            <button id="historyButton" class="history-btn">History</button>
+          </div>
+
+          <div class="status-card">
+            <p class="status-label">System Status</p>
+            <p id="statusText">Waiting for wake phrase: HAY EVAN</p>
+          </div>
+
+          <div class="tips-card">
+            <h3>Wake Phrase</h3>
+            <p>Say: <strong>HAY EVAN</strong> to activate the assistant.</p>
+            <h3>Example Commands</h3>
+            <ul>
+              <li>Open Google</li>
+              <li>Bude Google</li>
+              <li>Ṣii YouTube</li>
+              <li>Meghee Google</li>
+              <li>Search weather in Lagos</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="panel response-panel">
+          <div class="conversation-header">
+            <h2>Assistant Response</h2>
+            <span id="liveLanguage" class="pill">Language: Auto</span>
+          </div>
+
+          <div class="response-box">
+            <h3>Live Result</h3>
+            <p id="responseText">Welcome. I will listen and carry out your request.</p>
+          </div>
+
+          <div id="historyPanel" class="history-panel hidden">
+            <div class="history-header">
+              <h3>Command History</h3>
+              <div class="history-actions">
+                <button id="toggleHistoryButton" class="secondary-btn small-btn history-toggle hidden">See more</button>
+                <button id="clearHistoryButton" class="secondary-btn small-btn">Clear</button>
+              </div>
+            </div>
+            <ul id="historyList">
+              <li class="empty">No commands yet.</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
