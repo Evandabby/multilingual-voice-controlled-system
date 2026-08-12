@@ -413,9 +413,37 @@ function startWakeListening() {
 
   recognition.onerror = (event) => {
     isListening = false;
-    setStatus(`Error: ${event.error}`);
-    micButton.textContent = 'Wake Word';
-    readyButton.textContent = 'Ready to Listen';
+
+    console.error("Speech recognition error:", event.error);
+
+    let message = `Speech error: ${event.error}`;
+
+    if (event.error === "not-allowed") {
+        message = "Microphone permission was denied. Please allow microphone access.";
+    }
+
+    if (event.error === "audio-capture") {
+        message = "The microphone could not be accessed.";
+    }
+
+    if (event.error === "no-speech") {
+        message = "No speech was detected. Please spak clearly.";
+    }
+
+    if (event.error === "network") {
+        message = "Network error. Please check your internet connection.";
+    }
+
+    if (event.error === "language-not-supported") {
+        message = `The selected language (${recognition.lang}) is not supported by this browser.`;
+    }
+
+    setStatus(message);
+    responseText.textContent = message;
+
+    micButton.textContent = "Wake Word";
+    readyButton.textContent = "Ready to Listen";
+
   };
 
   recognition.onend = () => {
