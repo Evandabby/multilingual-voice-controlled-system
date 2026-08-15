@@ -37,6 +37,11 @@
             <button id="historyButton" class="history-btn">History</button>
           </div>
 
+          <div id="mobileHint" class="status-card" style="margin-top:12px;">
+            <p style="margin:0; font-weight:700">Mobile / Browser</p>
+            <p id="mobileHintText" style="margin:6px 0 0; color:var(--muted)">If the browser lacks live speech support, audio is recorded and uploaded to the server for transcription.</p>
+          </div>
+
           <div class="status-card">
             <p class="status-label">System Status</p>
             <p id="statusText">Waiting for wake phrase: HAY EVAN</p>
@@ -59,7 +64,10 @@
         <section class="panel response-panel">
           <div class="conversation-header">
             <h2>Assistant Response</h2>
-            <span id="liveLanguage" class="pill">Language: Auto</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="liveLanguage" class="pill">Language: Auto</span>
+              <span id="liveTime" class="pill">--:--:--</span>
+            </div>
           </div>
 
           <div class="response-box">
@@ -82,7 +90,11 @@
         </section>
       </main>
     </div>
-
+    <!-- Set this to your deployed backend origin (leave empty to use same origin): -->
+    <script>
+      // Example: window.BACKEND_ORIGIN = 'https://your-server.example.com';
+      window.BACKEND_ORIGIN = '';
+    </script>
     <script src="app.js"></script>
   </body>
 </html>
