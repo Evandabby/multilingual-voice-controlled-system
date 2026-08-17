@@ -12,15 +12,12 @@ const responseText = document.getElementById('responseText');
 const liveLanguage = document.getElementById('liveLanguage');
 
 const languageNames = {
-  auto: 'Auto',
   ig: 'Igbo',
   yo: 'Yoruba',
-  ha: 'Hausa',
-  en: 'English'
+  ha: 'Hausa'
 };
 
 const languageCodes = {
-  en: 'en-US',
   ig: 'ig-NG',
   yo: 'yo-NG',
   ha: 'ha-NG'
@@ -106,9 +103,36 @@ let SPEECH_ENERGY_MARGIN = 1.6; // factor above noise floor to consider speech (
 let lastActionTime = 0;
 let ACTION_COOLDOWN_MS = 2500; // minimum time between actions for same transcript (tunable)
 let MIN_WORDS_FOR_COMMAND = 2; // ignore too-short transcripts (tunable)
+let WAKE_PHRASE_MARGIN = 1.2; // lower margin for wake phrase detection (tunable, for low voices)
+let wakeActivationDelay = 3000; // 3 seconds delay after wake phrase detection
+let wakeActivationTimer = null;
 
 // Backend origin configuration (set in index.html as window.BACKEND_ORIGIN)
 const BACKEND_ORIGIN = (typeof window !== 'undefined' && window.BACKEND_ORIGIN) ? String(window.BACKEND_ORIGIN).replace(/\/$/, '') : '';
+
+// Helper to check if a valid language is selected
+function isLanguageSelected() {
+  const selected = languageSelect.value;
+  return selected && selected !== '';
+}
+
+// Save language selection to localStorage
+function saveLanguagePreference(langCode) {
+  try {
+    localStorage.setItem('evan_language_preference', langCode);
+  } catch (e) {}
+}
+
+// Load language preference from localStorage
+function loadLanguagePreference() {
+  try {
+    const saved = localStorage.getItem('evan_language_preference');
+    if (saved && languageCodes[saved]) {
+      return saved;
+    }
+  } catch (e) {}
+  return '';
+}
 
 function normalizeText(text) {
   return String(text || '')
@@ -443,7 +467,8 @@ function speakResponse(text, languageKey) {
     return;
   }
 
-  const selected = languageKey && languageKey !== 'auto' ? languageKey : (languageSelect.value !== 'auto' ? languageSelect.value : 'en');
+  // Always use the selected language; no auto-detection fallback
+  const selected = languageSelect.value || 'en';
   const code = languageCodes[selected] || 'en-US';
 
   const utterance = new SpeechSynthesisUtterance(text);
@@ -478,24 +503,35 @@ function resetIdleTimer() {
 }
 
 function handleCommand(text) {
+  // Require language selection
+  if (!isLanguageSelected()) {
+    setStatus('Please select a language before giving commands.');
+    responseText.textContent = 'Please select a language first.';
+    return;
+  }
+
   const cleanedText = normalizeText(text);
   if (!cleanedText) {
     return;
   }
 
+  // Use only the selected language; no auto-detection
   const selectedLanguage = languageSelect.value;
-  const detectedLanguage = selectedLanguage === 'auto' ? detectLanguage(cleanedText) : selectedLanguage;
-  const languageLabel = languageNames[detectedLanguage] || 'Auto';
+  const languageLabel = languageNames[selectedLanguage] || selectedLanguage;
   const intent = inferIntent(cleanedText);
   const action = executeAction(intent, cleanedText);
-  const finalMessage = buildLocalizedMessage(intent, cleanedText, detectedLanguage, action);
+  const finalMessage = buildLocalizedMessage(intent, cleanedText, selectedLanguage, action);
 
   liveLanguage.textContent = `Language: ${languageLabel}`;
   responseText.textContent = finalMessage;
   setStatus(`Intent detected: ${intent}`);
 
   addHistory(cleanedText, languageLabel, finalMessage);
-  speakResponse(finalMessage, detectedLanguage);
+  speakResponse(finalMessage, selectedLanguage);
+  
+  // After command is executed, keep assistant active for more commands
+  // Assistant stays active with wakeActivated = true
+  setStatus('Ready for next command.');
   resetIdleTimer();
 }
 
@@ -512,12 +548,20 @@ function stopListening() {
   }
 
   isListening = false;
-  micButton.textContent = 'Wake Word';
+  micButton.textContent = 'Listening for wake phrase';
   readyButton.textContent = 'Ready to Listen';
   setStatus('Listening stopped. Say "HAY EVAN" or tap Ready to Listen to activate again.');
 }
 
 function startWakeListening() {
+  // Require language selection before listening
+  if (!isLanguageSelected()) {
+    setStatus('Please select a language before starting the assistant.');
+    responseText.textContent = 'Please select a language first.';
+    micButton.textContent = 'Select Language';
+    return;
+  }
+
   if (!isOnline()) {
     setStatus('Internet connection is off. Please turn on mobile data or Wi‑Fi.');
     responseText.textContent = 'Internet connection is required to activate the assistant.';
@@ -563,10 +607,10 @@ function startWakeListening() {
     isListening = true;
     if (!wakeActivated) {
       setStatus('Waiting for wake phrase: HAY EVAN');
-      micButton.textContent = 'Listening for wake word';
+      micButton.textContent = 'Listening for wake phrase';
     } else {
       setStatus('Assistant is active. Speak your command.');
-      micButton.textContent = 'Assistant Active';
+      micButton.textContent = 'Assistant is active';
       readyButton.textContent = 'Listening';
     }
     resetIdleTimer();
@@ -612,17 +656,17 @@ function startWakeListening() {
 
     if (wakeActivated) {
       setStatus('Assistant is active. Speak your command.');
-      micButton.textContent = 'Assistant Active';
+      micButton.textContent = 'Assistant is active';
       readyButton.textContent = 'Listening';
       resetIdleTimer();
       return;
     }
 
-    micButton.textContent = 'Wake Word';
+    micButton.textContent = 'Listening for wake phrase';
     readyButton.textContent = 'Ready to Listen';
     setStatus('Waiting for wake phrase: HAY EVAN');
     setTimeout(() => {
-      if (!isListening && isOnline() && recognition) {
+      if (!isListening && isOnline() && recognition && isLanguageSelected()) {
         try { recognition.start(); } catch (error) {}
       }
     }, 400);
@@ -674,7 +718,9 @@ function startWakeListening() {
     noiseFloor = sorted[idx] || noiseFloor || 0;
 
     // update last speech energy time if current frame is above noise margin
-    if (avg > Math.max(2, noiseFloor * SPEECH_ENERGY_MARGIN)) {
+    // Use WAKE_PHRASE_MARGIN (lower threshold) if waiting for wake phrase to catch low voices
+    const margin = wakeActivated ? SPEECH_ENERGY_MARGIN : WAKE_PHRASE_MARGIN;
+    if (avg > Math.max(2, noiseFloor * margin)) {
       lastSpeechEnergyTime = Date.now();
     }
 
@@ -727,20 +773,36 @@ function startWakeListening() {
     lastProcessedTranscript = finalText;
 
     // If wake phrase wasn't active, look for wake phrase first
+    // Use lower energy margin for wake phrase detection to catch low voices
     if (!wakeActivated && containsWakePhrase(finalText)) {
-      const afterWake = stripWakePhrase(finalText);
-      wakeActivated = true;
-      setStatus('Wake phrase detected. Listening for your command.');
-      responseText.textContent = 'Wake phrase detected. Please say your command.';
-      speakResponse('Assistant active. Please say your command.', languageSelect.value !== 'auto' ? languageSelect.value : 'en');
-
-      // Start or reset session timer (1 minute)
-      resetSessionTimer();
-
-      if (afterWake) {
-        handleCommand(afterWake);
-        lastActionTime = Date.now();
+      // Require language selection before activating
+      if (!isLanguageSelected()) {
+        setStatus('Select your language choice to activate the assistant.');
+        responseText.textContent = 'Select your language choice from the dropdown above.';
+        processingLock = false;
+        return;
       }
+
+      const afterWake = stripWakePhrase(finalText);
+      // Delay activation by 3 seconds to allow user to finish speaking
+      setStatus('Wake phrase detected. Activating assistant in 3 seconds...');
+      responseText.textContent = 'Wake phrase detected. Activating assistant...';
+      micButton.textContent = 'Assistant is active';
+
+      if (wakeActivationTimer) clearTimeout(wakeActivationTimer);
+      wakeActivationTimer = setTimeout(() => {
+        wakeActivated = true;
+        setStatus('Listening for your command.');
+        responseText.textContent = 'Assistant is active. Please say your command.';
+        speakResponse('Assistant active. Please say your command.', languageSelect.value);
+        resetSessionTimer();
+
+        if (afterWake) {
+          handleCommand(afterWake);
+          lastActionTime = Date.now();
+        }
+      }, wakeActivationDelay);
+
       processingLock = false;
       return;
     }
@@ -750,8 +812,8 @@ function startWakeListening() {
       const commandText = normalizeText(stripWakePhrase(finalText));
       if (commandText && !containsWakePhrase(commandText)) {
         handleCommand(commandText);
-        // Reset session timer to keep assistant active for another minute
-        resetSessionTimer();
+        // After command, return to wake phrase listening
+        // (handleCommand now resets state automatically)
         lastActionTime = Date.now();
       }
     }
@@ -788,6 +850,13 @@ function startWakeListening() {
 
 micButton.addEventListener('click', startWakeListening);
 readyButton.addEventListener('click', () => {
+  // Require language selection
+  if (!isLanguageSelected()) {
+    setStatus('Please select a language before starting the assistant.');
+    responseText.textContent = 'Please select a language first.';
+    return;
+  }
+
   if (!isOnline()) {
     setStatus('Internet connection is off. Please turn on mobile data or Wi‑Fi.');
     responseText.textContent = 'Internet connection is required to activate the assistant.';
@@ -799,10 +868,10 @@ readyButton.addEventListener('click', () => {
   if (hasSpeechAPI) {
     wakeActivated = true;
     readyButton.textContent = 'Listening';
-    micButton.textContent = 'Assistant Active';
+    micButton.textContent = 'Assistant is active';
     setStatus('Assistant is active. Speak your command.');
     responseText.textContent = 'Assistant is ready. Please speak your command.';
-    speakResponse('Assistant ready. Please speak your command.', languageSelect.value !== 'auto' ? languageSelect.value : 'en');
+    speakResponse('Assistant ready. Please speak your command.', languageSelect.value);
     resetIdleTimer();
     return;
   }
@@ -982,16 +1051,61 @@ toggleHistoryButton.addEventListener('click', () => {
 });
 
 languageSelect.addEventListener('change', () => {
-  if (recognition) {
-    recognition.lang = languageCodes[languageSelect.value] || 'en-US';
+  const selectedLang = languageSelect.value;
+  
+  // Always update recognition language if a language is selected
+  if (selectedLang && recognition) {
+    recognition.lang = languageCodes[selectedLang] || 'ig-NG';
+  }
+  
+  // Save the language preference to localStorage
+  if (isLanguageSelected()) {
+    saveLanguagePreference(selectedLang);
+    setStatus('Language selected. Waiting for wake phrase: HAY EVAN');
+    responseText.textContent = 'Language selected. Say "HAY EVAN" to activate the assistant.';
+    
+    // Only start listening if not currently active
+    if (!wakeActivated && !isListening) {
+      startWakeListening();
+    }
+  } else {
+    // Language unselected: show welcome prompt
+    setStatus('Please select a language to begin.');
+    responseText.textContent = 'Welcome. Please select a language from the dropdown above to activate wake phrase';
+    // Stop listening if active and language is unselected
+    if (isListening) {
+      stopListening();
+    }
   }
 });
 
 loadHistory();
 renderHistory();
-setStatus('Waiting for wake phrase: HAY EVAN');
-responseText.textContent = 'Welcome. Say "HAY EVAN" or tap Ready to Listen to activate the assistant.';
-startWakeListening();
+
+// Load saved language preference from localStorage
+const savedLanguage = loadLanguagePreference();
+if (savedLanguage) {
+  languageSelect.value = savedLanguage;
+  if (recognition) {
+    recognition.lang = languageCodes[savedLanguage] || 'ig-NG';
+  }
+}
+
+// Initialize button states
+micButton.textContent = 'Listening for wake phrase';
+readyButton.textContent = 'Ready to Listen';
+
+// Check if language is selected at startup
+if (isLanguageSelected()) {
+  const selectedLang = languageSelect.value;
+  setStatus('Waiting for wake phrase: HAY EVAN');
+  responseText.textContent = 'Language selected. Say "HAY EVAN" to activate the assistant.';
+  // Automatically start listening if language was pre-loaded from localStorage
+  startWakeListening();
+} else {
+  setStatus('Please select a language to begin.');
+  responseText.textContent = 'Welcome. Please select a language from the dropdown above to activate wake phrase';
+}
 
 // Live clock update
 const liveTimeEl = document.getElementById('liveTime');
